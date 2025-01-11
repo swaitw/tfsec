@@ -2,7 +2,6 @@ package config_test
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"testing"
 
@@ -44,7 +43,44 @@ exclude_ignores:
 	c := load(t, "config.yaml", content)
 
 	assert.Contains(t, c.SeverityOverrides, "AWS018")
-	assert.Contains(t, c.ExcludedChecks, "DP001")
+	assert.Contains(t, c.GetValidExcludedChecks(), "DP001")
+	assert.Contains(t, c.ExcludeIgnores, "DP002")
+}
+
+func TestExpiredExcludesElementsFromYAMLNotPresent(t *testing.T) {
+	content := `
+severity_overrides:
+  AWS018: LOW
+
+exclude:
+  - DP001:2021-01-01
+
+exclude_ignores:
+  - DP002
+`
+	c := load(t, "config.yaml", content)
+
+	assert.Contains(t, c.SeverityOverrides, "AWS018")
+	assert.Len(t, c.GetValidExcludedChecks(), 0)
+	assert.Contains(t, c.ExcludeIgnores, "DP002")
+}
+
+func TestExcludesElementsFromYAMLWithFutureExpiryIsPresent(t *testing.T) {
+	content := `
+severity_overrides:
+  AWS018: LOW
+
+exclude:
+  - DP001:3099-01-01
+
+exclude_ignores:
+  - DP002
+`
+	c := load(t, "config.yaml", content)
+
+	assert.Contains(t, c.SeverityOverrides, "AWS018")
+	assert.Len(t, c.GetValidExcludedChecks(), 1)
+	assert.Contains(t, c.GetValidExcludedChecks(), "DP001")
 	assert.Contains(t, c.ExcludeIgnores, "DP002")
 }
 
@@ -62,7 +98,7 @@ exclude_ignores:
 	c := load(t, "config.yml", content)
 
 	assert.Contains(t, c.SeverityOverrides, "AWS018")
-	assert.Contains(t, c.ExcludedChecks, "DP001")
+	assert.Contains(t, c.GetValidExcludedChecks(), "DP001")
 	assert.Contains(t, c.ExcludeIgnores, "DP002")
 }
 
@@ -82,7 +118,7 @@ func TestExcludesElementsFromJSON(t *testing.T) {
 	c := load(t, "config.json", content)
 
 	assert.Contains(t, c.SeverityOverrides, "AWS018")
-	assert.Contains(t, c.ExcludedChecks, "DP001")
+	assert.Contains(t, c.GetValidExcludedChecks(), "DP001")
 	assert.Contains(t, c.ExcludeIgnores, "DP002")
 }
 
@@ -104,12 +140,12 @@ func TestWarningIsRewrittenAsMedium(t *testing.T) {
 }
 
 func load(t *testing.T, filename, content string) *config.Config {
-	dir, err := ioutil.TempDir("", "")
+	dir, err := os.MkdirTemp("", "")
 	require.NoError(t, err)
 
 	configFileName := fmt.Sprintf("%s/%s", dir, filename)
 
-	err = ioutil.WriteFile(configFileName, []byte(content), os.ModePerm)
+	err = os.WriteFile(configFileName, []byte(content), os.ModePerm)
 	require.NoError(t, err)
 
 	c, err := config.LoadConfig(configFileName)

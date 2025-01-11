@@ -3,10 +3,10 @@ package config
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/aquasecurity/defsec/pkg/severity"
 	"gopkg.in/yaml.v2"
@@ -28,7 +28,7 @@ func LoadConfig(configFilePath string) (*Config, error) {
 		return nil, fmt.Errorf("failed to access config file '%s': %w", configFilePath, err)
 	}
 
-	configFileContent, err := ioutil.ReadFile(configFilePath)
+	configFileContent, err := os.ReadFile(configFilePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read config file '%s': %w", configFilePath, err)
 	}
@@ -52,6 +52,25 @@ func LoadConfig(configFilePath string) (*Config, error) {
 	rewriteSeverityOverrides(config)
 
 	return config, nil
+}
+
+func (c *Config) GetValidExcludedChecks() (excludedChecks []string) {
+	for _, check := range c.ExcludedChecks {
+		if strings.Contains(check, ":") {
+			parts := strings.Split(check, ":")
+			if len(parts) == 2 {
+				if expiry, err := time.Parse("2006-01-02", parts[1]); err == nil {
+					if expiry.Before(time.Now()) {
+						continue
+					}
+				}
+			}
+			excludedChecks = append(excludedChecks, parts[0])
+		} else {
+			excludedChecks = append(excludedChecks, check)
+		}
+	}
+	return excludedChecks
 }
 
 func rewriteSeverityOverrides(config *Config) {
